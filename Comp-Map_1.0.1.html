@@ -1,0 +1,2070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diatonic Harmony Treemap</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:white;color:#111;display:flex;justify-content:center;align-items:center}
+.wrap{width:min(100vw,1000px);height:min(100vh,1000px);position:relative;overflow:hidden;background:white}
+.label{position:absolute;top:4%;width:210px;text-align:center;font-weight:850;font-size:clamp(15px,2vw,23px);line-height:1.1}
+.left-label{left:18%;transform:translateX(-50%);color:#1550a8} .right-label{right:18%;transform:translateX(50%);color:#1f7a2e}
+.chord-map{--cell:56px;--gap:4px;position:absolute;left:50%;top:4%;width:calc((var(--cell) * 2) + var(--gap));height:auto;transform:translateX(-50%);display:grid;grid-template-columns:repeat(2,var(--cell));grid-template-rows:repeat(5,var(--cell));gap:var(--gap);z-index:2}
+.map-cell{border:3px solid #111;border-radius:12px;background:#eee;display:flex;align-items:center;justify-content:center;flex-direction:column;font-weight:900;cursor:pointer;box-shadow:0 3px 8px rgba(0,0,0,.12);padding:0;color:#111}
+.map-cell.active{background:#d0d0d0;box-shadow:0 5px 13px rgba(0,0,0,.22)} .map-cell:hover{filter:brightness(.96)}
+.map-chord{font-size:22px;line-height:.95} .map-rn{font-size:15px;margin-top:4px}
+.map-I{grid-column:1/span 2;grid-row:1} .map-ii{grid-column:1;grid-row:2} .map-iii{grid-column:1;grid-row:3} .map-IV{grid-column:2;grid-row:2} .map-V{grid-column:2;grid-row:3} .map-vi{grid-column:1/span 2;grid-row:4} .map-vii{grid-column:1/span 2;grid-row:5;width:var(--cell);justify-self:center}
+.stack{position:absolute;top:4%;bottom:26%;width:calc((56px * 2) + 4px);display:flex;flex-direction:column;gap:4px;overflow-y:auto;padding-right:2px}
+.left-stack{left:18%;transform:translateX(-50%)} .right-stack{right:18%;transform:translateX(50%)}
+.rect{border:4px solid;border-radius:14px;display:flex;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.16);padding:6px;color:#222;min-height:34px}
+.rect.lead{border-color:#2f73d8;background:linear-gradient(145deg,#f8fbff,#d8e9ff)} .rect.sub{border-color:#5ebd3e;background:linear-gradient(145deg,#fbfff8,#d9f4ce)}
+.rect.active{filter:saturate(1.25);box-shadow:0 7px 20px rgba(0,0,0,.28)} .rect:hover{filter:brightness(.98)}
+.name{font-weight:950;text-align:center;line-height:.95;font-size:clamp(13px,2vw,22px)} .fn{font-weight:750;text-align:center;line-height:1.05;margin-top:3px;font-size:clamp(8px,1.1vw,12px)}
+.popup{position:absolute;background:white;border:3px solid #222;border-radius:16px;padding:12px 14px;font-size:clamp(14px,1.6vw,18px);line-height:1.25;box-shadow:0 8px 24px rgba(0,0,0,.24);display:none;z-index:10;max-width:360px;min-width:220px}
+.popup.show{display:block} .popup-title{font-weight:950;font-size:1.14em;margin-bottom:4px}
+.popup-notes{margin:8px 0 10px 0;padding:6px 8px;border:1px solid #bbb;border-radius:8px;background:#fafafa;font-size:.95em;line-height:1.2}
+.popup-chain{display:grid;gap:4px;align-items:start} .popup-chain.cols-3{grid-template-columns:1fr auto 1fr auto 1fr} .popup-chain.cols-2{grid-template-columns:1fr auto 1fr}
+.chain-col{padding:4px 5px;border-radius:7px;background:white;border:1px solid #ddd;min-width:54px} .chain-title{font-weight:950;margin-bottom:3px;font-size:.92em;text-align:center} .chain-arrow{align-self:center;font-weight:950;font-size:1.1em}
+.note-plain{white-space:nowrap} .note-arrow{white-space:nowrap;font-weight:900;color:#111} .note-unresolved{white-space:nowrap;font-weight:900;color:#c01818}
+@media(max-width:700px){
+ .label{top:4%;font-size:11px;width:110px} .chord-map{--cell:48px;--gap:3px;width:calc((var(--cell) * 2) + var(--gap));height:auto;gap:var(--gap);grid-template-columns:repeat(2,var(--cell));grid-template-rows:repeat(5,var(--cell))} .map-cell{border-width:2px;border-radius:9px} .map-chord{font-size:18px} .map-rn{font-size:10px;margin-top:1px}
+ .stack{top:4%;bottom:26%;width:calc((48px * 2) + 3px);gap:3px} .rect{border-width:2px;border-radius:9px;padding:3px} .name{font-size:12px} .fn{font-size:7.5px}
+ .popup{min-width:170px;max-width:285px;font-size:15px;padding:9px 10px;border-width:2px;border-radius:12px}
+}
+
+/* Enforced shared geometry:
+   squares = 1 unit wide x 1 unit high
+   rectangles = 2 units wide x 1 unit high */
+.chord-map {
+  --cell: 52px !important;
+  --gap: 4px !important;
+  width: calc((var(--cell) * 2) + var(--gap)) !important;
+  grid-template-columns: repeat(2, var(--cell)) !important;
+  grid-template-rows: repeat(5, var(--cell)) !important;
+  gap: var(--gap) !important;
+}
+
+.map-I,
+.map-vi {
+  width: calc((var(--cell) * 2) + var(--gap)) !important;
+  height: var(--cell) !important;
+}
+
+.map-ii,
+.map-iii,
+.map-IV,
+.map-V,
+.map-vii {
+  width: var(--cell) !important;
+  height: var(--cell) !important;
+}
+
+.map-vii {
+  justify-self: center !important;
+}
+
+.stack {
+  width: calc((52px * 2) + 4px) !important;
+  gap: 4px !important;
+}
+
+.rect {
+  width: calc((52px * 2) + 4px) !important;
+  height: 52px !important;
+  flex: 0 0 52px !important;
+}
+
+@media (max-width: 700px) {
+  .chord-map {
+    --cell: 44px !important;
+    --gap: 3px !important;
+    width: calc((var(--cell) * 2) + var(--gap)) !important;
+    grid-template-columns: repeat(2, var(--cell)) !important;
+    grid-template-rows: repeat(5, var(--cell)) !important;
+  }
+
+  .map-I,
+  .map-vi {
+    width: calc((var(--cell) * 2) + var(--gap)) !important;
+    height: var(--cell) !important;
+  }
+
+  .map-ii,
+  .map-iii,
+  .map-IV,
+  .map-V,
+  .map-vii {
+    width: var(--cell) !important;
+    height: var(--cell) !important;
+  }
+
+  .stack {
+    width: calc((44px * 2) + 3px) !important;
+    gap: 3px !important;
+  }
+
+  .rect {
+    width: calc((44px * 2) + 3px) !important;
+    height: 44px !important;
+    flex: 0 0 44px !important;
+  }
+}
+
+
+.builder-controls {
+  position:absolute;
+  left:50%;
+  bottom:32%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:6px;
+  z-index:30;
+}
+
+.builder-btn {
+  border:2px solid #111;
+  border-radius:9px;
+  background:#fff;
+  font-weight:850;
+  font-size:19px;
+  padding:6px 10px;
+  min-width:48px;
+  cursor:pointer;
+}
+
+.builder-btn:disabled {
+  opacity:.35;
+  cursor:default;
+}
+
+.builder-btn.active {
+  background:#111;
+  color:#fff;
+}
+
+.builder-status { display:none;
+  position:absolute;
+  left:50%;
+  bottom:40%;
+  transform:translateX(-50%);
+  font-size:15px;
+  font-weight:750;
+  color:#333;
+  text-align:center;
+  width:92%;
+  z-index:25;
+  pointer-events:none;
+}
+
+.progression-area {
+  position:absolute;
+  left:50%;
+  top:58%;
+  transform:translateX(-50%);
+  width:64%;
+  max-height:34%;
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-start;
+  align-content:flex-start;
+  gap:8px 10px;
+  overflow:hidden;
+  z-index:20;
+  pointer-events:none;
+}
+
+.prog-chord {
+  min-width:74px;
+  min-height:30px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  flex-direction:row;
+  gap:5px;
+  font-weight:900;
+  position:relative;
+  box-shadow:none;
+  pointer-events:auto;
+  padding:2px 3px;
+}
+
+.prog-chord.lead-prog {
+  color:#1550a8;
+}
+
+.prog-chord.sub-prog {
+  color:#1f7a2e;
+}
+
+.prog-symbol {
+  font-size:26px;
+  line-height:1;
+  white-space:nowrap;
+}
+
+.prog-slash {
+  font-size:26px;
+  line-height:1;
+  opacity:.8;
+}
+
+.build-selectable {
+  outline:3px solid #f2b705;
+  outline-offset:2px;
+}
+
+.build-selected {
+  outline:4px solid #111 !important;
+  outline-offset:2px;
+}
+
+@media(max-width:700px){
+  .builder-controls {
+    bottom:32%;
+    gap:4px;
+  }
+
+  .builder-btn {
+    font-size:13px;
+    padding:5px 8px;
+    min-width:42px;
+  }
+
+  .builder-status { display:none;
+    bottom:40%;
+    font-size:11px;
+  }
+
+  .progression-area {
+    right:2%;
+    bottom:40%;
+    width:70%;
+    max-height:24%;
+    gap:6px 8px;
+  }
+
+  .prog-chord {
+    min-width:58px;
+    min-height:24px;
+    gap:3px;
+    padding:1px 2px;
+  }
+
+  .prog-symbol,
+  .prog-slash {
+    font-size:14px;
+  }
+}
+
+
+/* Progression now reads like normal writing: left-to-right, then downward. */
+.progression-area {
+  left: 50% !important;
+  right: auto !important;
+  top: 58% !important;
+  bottom: auto !important;
+  transform: translateX(-50%) !important;
+  width: 64% !important;
+  max-height: 34% !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-start !important;
+  align-content: flex-start !important;
+  gap: 4px !important;
+  overflow: hidden !important;
+}
+
+.builder-controls {
+  left: 50% !important;
+  top: 52% !important;
+  bottom: auto !important;
+  transform: translateX(-50%) !important;
+}
+
+.builder-status { display:none;
+  left: 50% !important;
+  top: 55% !important;
+  bottom: auto !important;
+  transform: translateX(-50%) !important;
+}
+
+@media(max-width:700px){
+  .progression-area {
+    left: 50% !important;
+    right: auto !important;
+    top: 58% !important;
+    bottom: auto !important;
+    width: 68% !important;
+    max-height: 34% !important;
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
+    align-content: flex-start !important;
+    gap: 3px !important;
+  }
+  .builder-controls {
+    top: 52% !important;
+    bottom: auto !important;
+  }
+  .builder-status { display:none;
+    top: 55% !important;
+    bottom: auto !important;
+  }
+}
+
+
+.builder-prompt {
+  position:absolute;
+  z-index:32;
+  display:none;
+  font-size:15px;
+  font-weight:900;
+  text-align:center;
+  line-height:1.05;
+  color:#111;
+  background:rgba(255,255,255,.92);
+  border:2px solid #111;
+  border-radius:10px;
+  padding:5px 7px;
+  box-shadow:0 2px 8px rgba(0,0,0,.16);
+  pointer-events:none;
+}
+
+.prompt-diatonic {
+  left:50%;
+  top:0;
+  transform:translateX(-50%);
+}
+
+.prompt-lead {
+  left:30%;
+  top:0;
+  transform:translateX(-50%);
+  border-color:#2f73d8;
+}
+
+.prompt-confirm {
+  left:50%;
+  top:0;
+  transform:translateX(-50%);
+}
+
+.prompt-sub {
+  left:70%;
+  top:0;
+  transform:translateX(-50%);
+  border-color:#5ebd3e;
+}
+
+.prompt-show {
+  display:block;
+}
+
+@media(max-width:700px){
+  .builder-prompt {
+    font-size:10px;
+    padding:4px 5px;
+    border-radius:8px;
+  }
+  .prompt-lead { left:26%; top:47%; }
+  .prompt-confirm { left:50%; top:0; }
+  .prompt-sub { left:74%; top:47%; }
+  .prompt-diatonic { left:50%; top:0; }
+}
+
+
+.playing-chord {
+  background:rgba(0,0,0,.08);
+  border-radius:6px;
+  outline:2px solid #111;
+  outline-offset:1px;
+  filter:saturate(1.25);
+}
+
+.play-btn.active {
+  background:#111;
+  color:#fff;
+}
+
+
+.edit-popup {
+  position:absolute;
+  display:none;
+  z-index:40;
+  background:white;
+  border:3px solid #111;
+  border-radius:14px;
+  padding:10px;
+  box-shadow:0 8px 24px rgba(0,0,0,.24);
+  min-width:150px;
+  max-width:210px;
+}
+
+.edit-popup.show {
+  display:block;
+}
+
+.edit-title {
+  font-weight:950;
+  font-size:14px;
+  margin-bottom:8px;
+  text-align:center;
+}
+
+.edit-btn {
+  display:block;
+  width:100%;
+  margin:5px 0;
+  border:2px solid #111;
+  border-radius:9px;
+  background:#fff;
+  font-weight:850;
+  font-size:13px;
+  padding:6px 8px;
+  cursor:pointer;
+}
+
+.edit-btn:active {
+  background:#eee;
+}
+
+.beat-row {
+  display:flex;
+  gap:6px;
+}
+
+.beat-row .edit-btn {
+  flex:1;
+}
+
+.beat-btn {
+  font-size:26px;
+  line-height:1;
+}
+
+.edit-selected {
+  background:rgba(0,0,0,.08);
+  border-radius:6px;
+  outline:2px solid #111;
+  outline-offset:1px;
+}
+
+@media(max-width:700px){
+  .edit-popup {
+    min-width:135px;
+    max-width:175px;
+    padding:8px;
+    border-width:2px;
+    border-radius:11px;
+  }
+  .edit-title { font-size:15px; margin-bottom:6px; }
+  .edit-btn { font-size:11px; padding:5px 6px; border-radius:7px; }
+}
+
+
+.key-select {
+  border:2px solid #111;
+  border-radius:9px;
+  background:#fff;
+  font-weight:850;
+  font-size:14px;
+  padding:6px 7px;
+  max-width:92px;
+}
+
+@media(max-width:700px){
+  .key-select {
+    font-size:15px;
+    padding:5px 5px;
+    max-width:76px;
+  }
+}
+
+
+.paste-overlay {
+  position:absolute;
+  inset:0;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:80;
+  background:rgba(255,255,255,.72);
+}
+
+.paste-overlay.show {
+  display:flex;
+}
+
+.paste-box {
+  width:min(88%, 430px);
+  background:#fff;
+  border:3px solid #111;
+  border-radius:16px;
+  padding:12px;
+  box-shadow:0 10px 28px rgba(0,0,0,.25);
+}
+
+.paste-title {
+  font-weight:950;
+  font-size:16px;
+  margin-bottom:8px;
+  text-align:center;
+}
+
+.paste-text {
+  width:100%;
+  height:150px;
+  border:2px solid #111;
+  border-radius:10px;
+  padding:8px;
+  font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  resize:vertical;
+}
+
+.paste-actions {
+  display:flex;
+  gap:8px;
+  margin-top:8px;
+}
+
+.paste-actions .edit-btn {
+  flex:1;
+}
+
+@media(max-width:700px){
+  .paste-box {
+    width:92%;
+    padding:10px;
+    border-width:2px;
+    border-radius:13px;
+  }
+  .paste-title { font-size:14px; }
+  .paste-text {
+    height:130px;
+    font-size:14px;
+  }
+}
+
+
+
+
+
+.prompt-row {
+  position:absolute;
+  inset:0;
+  display:none;
+  z-index:32;
+  pointer-events:none;
+}
+
+.prompt-row.show {
+  display:block;
+}
+
+.prompt-option {
+  position:absolute;
+  min-height:0;
+  display:block;
+  text-align:center;
+  font-weight:900;
+  font-size:19px;
+  line-height:1.12;
+  color:#111;
+  background:transparent;
+  padding:0;
+  overflow:visible;
+  animation: promptGlow 900ms ease-out 1;
+  transform:translateX(-50%);
+  white-space:normal;
+}
+
+.prompt-lead {
+  color:#1550a8;
+}
+
+.prompt-center {
+  color:#111;
+}
+
+.prompt-sub {
+  color:#1f7a2e;
+}
+
+.arrowline{
+  display:block;
+  font-size:32px;
+  font-weight:700;
+  line-height:1;
+  margin-bottom:0px;
+  font-family:inherit;
+}
+
+@keyframes promptGlow {
+  0% { opacity:0; letter-spacing:0.5px; }
+  25% { opacity:1; text-shadow:0 0 8px rgba(0,0,0,.22); }
+  100% { opacity:1; text-shadow:none; }
+}
+
+@media(max-width:700px){
+  .prompt-option {
+    font-size:15px;
+  }
+
+  .arrowline{
+    font-size:26px;
+    margin-bottom:1px;
+  }
+}
+
+.builder-prompt {
+  display:none !important;
+}
+
+@media(max-width:700px){
+  .prompt-row {
+    top:0;
+    width:82%;
+    gap:4px;
+  }
+
+  .prompt-option {
+    min-height:30px;
+    font-size:9.5px;
+    border-radius:8px;
+    padding:3px 4px;
+  }
+}
+
+.builder-prompt {
+  display:none !important;
+}
+
+@media(max-width:700px){
+  .prompt-row {
+    top:0;
+    width:82%;
+    gap:4px;
+  }
+
+  .prompt-option {
+    min-height:30px;
+    font-size:9.5px;
+    border-radius:8px;
+    padding:3px 4px;
+  }
+}
+
+
+.play-overlay {
+  position:absolute;
+  inset:0;
+  display:none;
+  z-index:28;
+  background:rgba(255,255,255,0);
+  pointer-events:auto;
+}
+
+.play-overlay.show {
+  display:block;
+}
+
+/* Keep the control row above the play overlay so Stop remains clickable. */
+.builder-controls {
+  z-index:90 !important;
+}
+
+/* Keep active chord highlight visible above the overlay. */
+.playing-chord {
+  position:relative;
+  z-index:91;
+}
+
+
+/* Dark-glass visual redesign */
+:root {
+  --glass-bg:#081019;
+  --glass-panel:#111a26;
+  --glass-panel-2:#172232;
+  --glass-border:#344152;
+  --glass-border-soft:#243143;
+  --glass-text:#e9eef7;
+  --glass-muted:#aeb9c8;
+  --glass-shadow:rgba(0,0,0,.55);
+  --lead-blue:#2f73d8;
+  --sub-green:#5ebd3e;
+}
+
+body {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(64,82,110,.22), transparent 42%),
+    linear-gradient(180deg, #121a26 0%, #070c13 100%) !important;
+  color:var(--glass-text) !important;
+}
+
+.wrap {
+  background:
+    linear-gradient(180deg, rgba(19,29,42,.96), rgba(6,11,18,.98)) !important;
+  border:3px solid rgba(112,130,154,.24);
+  border-radius:34px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.04),
+    0 18px 44px rgba(0,0,0,.55);
+}
+
+.wrap::before {
+  content:"Comp-Map";
+  position:absolute;
+  left:50%;
+  top:0.7%;
+  transform:translateX(-50%);
+  color:rgba(232,239,249,.78);
+  font-weight:950;
+  letter-spacing:3px;
+  font-size:18px;
+  z-index:5;
+  pointer-events:none;
+}
+
+/* Main columns */
+.stack,
+.chord-map,
+.progression-area {
+  background:
+    linear-gradient(180deg, rgba(26,39,56,.70), rgba(9,15,24,.70)) !important;
+  border:2px solid rgba(123,143,169,.24);
+  border-radius:22px;
+  box-shadow:
+    inset 0 0 22px rgba(255,255,255,.025),
+    0 8px 24px rgba(0,0,0,.24);
+  padding:8px !important;
+}
+
+.chord-map {
+  padding:6px !important;
+}
+
+/* Buttons / controls */
+.builder-controls {
+  background:rgba(13,22,34,.72);
+  border:2px solid rgba(123,143,169,.25);
+  border-radius:16px;
+  padding:6px;
+  box-shadow:
+    inset 0 0 12px rgba(255,255,255,.03),
+    0 6px 16px rgba(0,0,0,.35);
+}
+
+.builder-btn,
+.key-select,
+.edit-btn {
+  background:
+    linear-gradient(180deg, #182436 0%, #090f18 100%) !important;
+  color:var(--glass-text) !important;
+  border:2px solid rgba(132,150,174,.42) !important;
+  border-radius:13px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.09),
+    0 3px 8px rgba(0,0,0,.38);
+  text-shadow:0 1px 2px rgba(0,0,0,.8);
+}
+
+.builder-btn.active,
+.play-btn.active {
+  background:
+    linear-gradient(180deg, #dfe6f0 0%, #9daaba 100%) !important;
+  color:#07101a !important;
+  border-color:#e9eef7 !important;
+  text-shadow:none;
+}
+
+.key-select option {
+  background:#111a26;
+  color:#e9eef7;
+}
+
+/* Diatonic selector */
+.map-cell {
+  background:
+    linear-gradient(180deg, #202d3e 0%, #0b121d 100%) !important;
+  color:var(--glass-text) !important;
+  border:2px solid rgba(144,160,181,.44) !important;
+  border-radius:12px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 4px 11px rgba(0,0,0,.38) !important;
+  text-shadow:0 1px 2px rgba(0,0,0,.8);
+}
+
+.map-cell.active,
+.map-cell.build-selected {
+  background:
+    linear-gradient(180deg, #e6edf7 0%, #a8b5c5 100%) !important;
+  color:#07101a !important;
+  border-color:#eef4ff !important;
+  text-shadow:none;
+}
+
+/* Leading / substitution cards */
+.rect {
+  background:
+    linear-gradient(180deg, #1d2a3c 0%, #0b121d 100%) !important;
+  color:var(--glass-text) !important;
+  border-radius:13px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.07),
+    0 4px 11px rgba(0,0,0,.36) !important;
+  text-shadow:0 1px 2px rgba(0,0,0,.8);
+}
+
+.rect.lead {
+  border-color:rgba(47,115,216,.84) !important;
+}
+
+.rect.sub {
+  border-color:rgba(94,189,62,.84) !important;
+}
+
+.rect.active {
+  background:
+    linear-gradient(180deg, #e4ebf5 0%, #a6b2c3 100%) !important;
+  color:#07101a !important;
+  text-shadow:none;
+}
+
+/* Generated progression line */
+.progression-area {
+  background:
+    linear-gradient(180deg, rgba(13,22,34,.72), rgba(5,9,15,.72)) !important;
+  border-radius:18px;
+}
+
+.prog-chord {
+  color:var(--glass-text) !important;
+  text-shadow:0 1px 2px rgba(0,0,0,.85);
+}
+
+.prog-chord.lead-prog {
+  color:#69a6ff !important;
+}
+
+.prog-chord.sub-prog {
+  color:#8be171 !important;
+}
+
+.playing-chord,
+.edit-selected {
+  background:rgba(232,239,249,.13) !important;
+  outline:2px solid rgba(232,239,249,.72) !important;
+  border-radius:7px;
+}
+
+/* Popups */
+.popup,
+.edit-popup,
+.paste-box {
+  background:
+    linear-gradient(180deg, rgba(27,39,56,.98), rgba(8,14,23,.98)) !important;
+  color:var(--glass-text) !important;
+  border:2px solid rgba(145,162,184,.52) !important;
+  box-shadow:
+    inset 0 0 18px rgba(255,255,255,.035),
+    0 12px 32px rgba(0,0,0,.58) !important;
+}
+
+.popup-notes,
+.chain-col {
+  background:rgba(255,255,255,.05) !important;
+  border-color:rgba(160,176,196,.25) !important;
+  color:var(--glass-text) !important;
+}
+
+.note-arrow,
+.note-arrow span[style*="#111"],
+.note-plain {
+  color:var(--glass-text) !important;
+}
+
+.note-unresolved,
+.note-arrow span[style*="#c01818"] {
+  color:#ff7d7d !important;
+}
+
+/* Paste overlay */
+.paste-overlay {
+  background:rgba(4,8,13,.72) !important;
+}
+
+.paste-text {
+  background:#081019 !important;
+  color:var(--glass-text) !important;
+  border-color:rgba(145,162,184,.52) !important;
+}
+
+/* Prompts */
+.prompt-option {
+  color:var(--glass-text);
+  text-shadow:0 2px 5px rgba(0,0,0,.9);
+}
+
+.prompt-lead {
+  color:#69a6ff !important;
+}
+
+.prompt-sub {
+  color:#8be171 !important;
+}
+
+.arrowline {
+  color:inherit;
+  text-shadow:0 2px 6px rgba(0,0,0,.95);
+}
+
+/* Build highlighting */
+.build-selectable {
+  outline:2px solid rgba(232,239,249,.48) !important;
+  outline-offset:2px;
+}
+
+.build-selected {
+  outline:3px solid rgba(232,239,249,.92) !important;
+  outline-offset:2px;
+}
+
+/* Inactive play overlay remains transparent but blocks interaction */
+.play-overlay.show {
+  background:rgba(5,9,15,.10) !important;
+}
+
+@media(max-width:700px){
+  .wrap {
+    border-radius:24px;
+    border-width:2px;
+  }
+
+  .wrap::before {
+    font-size:14px;
+    top:.4%;
+    letter-spacing:2px;
+  }
+
+  .stack,
+  .chord-map,
+  .progression-area {
+    border-radius:16px;
+    padding:5px !important;
+  }
+
+  .builder-controls {
+    border-radius:13px;
+    padding:4px;
+  }
+}
+
+
+/* Remove visible group frames; keep only subtle grouping by spacing/glow */
+.stack,
+.chord-map,
+.progression-area,
+.builder-controls {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+}
+
+/* Restore essential grid gaps/padding after removing frames */
+.chord-map {
+  padding:0 !important;
+}
+
+.stack {
+  padding-right:0 !important;
+}
+
+/* Progression floats directly on background */
+.progression-area {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+}
+
+/* Controls float without an enclosing capsule */
+.builder-controls {
+  background:transparent !important;
+  border:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+}
+
+/* Keep individual controls visually defined */
+.builder-btn,
+.key-select {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    0 4px 12px rgba(0,0,0,.45) !important;
+}
+
+/* Slight glow behind the three chord groups, but no edge/frame */
+.left-stack::before,
+.right-stack::before,
+.chord-map::before {
+  content:"";
+  position:absolute;
+  inset:-8px;
+  border-radius:20px;
+  background:radial-gradient(circle at 50% 20%, rgba(255,255,255,.055), transparent 68%);
+  z-index:-1;
+  pointer-events:none;
+}
+
+/* Keep chord-map children above its glow */
+.chord-map,
+.stack {
+  isolation:isolate;
+}
+
+/* Progression text gets a very faint base glow only */
+.progression-area::before {
+  content:"";
+  position:absolute;
+  inset:-6px;
+  border-radius:18px;
+  background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0));
+  z-index:-1;
+  pointer-events:none;
+}
+
+.progression-area {
+  isolation:isolate;
+}
+
+/* Tighten visual alignment now that frames are gone */
+.rect,
+.map-cell {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 4px 12px rgba(0,0,0,.42) !important;
+}
+
+/* Make the outer app shell less frame-like too */
+.wrap {
+  border-color:rgba(112,130,154,.13) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.025),
+    0 18px 44px rgba(0,0,0,.55) !important;
+}
+
+@media(max-width:700px){
+  .left-stack::before,
+  .right-stack::before,
+  .chord-map::before {
+    inset:-5px;
+    border-radius:14px;
+  }
+}
+
+
+/* Direct compression for only the three-column resolution popup */
+.compact-chain {
+  gap:1px !important;
+  width:100% !important;
+  max-width:100% !important;
+  grid-template-columns:minmax(0,.82fr) auto minmax(0,.82fr) auto minmax(0,.82fr) !important;
+}
+
+.compact-chain .chain-col {
+  min-width:0 !important;
+  padding:2px 2px !important;
+  border-radius:5px !important;
+}
+
+.compact-chain .chain-title {
+  font-size:.72em !important;
+  margin-bottom:1px !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+}
+
+.compact-chain .chain-arrow {
+  font-size:.72em !important;
+  padding:0 !important;
+}
+
+.compact-chain .note-plain,
+.compact-chain .note-arrow,
+.compact-chain .note-unresolved {
+  font-size:.66em !important;
+  line-height:1.02 !important;
+  white-space:nowrap !important;
+}
+
+.popup-notes:has(.compact-chain) {
+  padding:3px !important;
+}
+
+@supports not selector(:has(*)) {
+  .popup-notes {
+    max-width:100%;
+  }
+}
+
+@media(max-width:700px){
+  .compact-chain .chain-col {
+    padding:1px 1px !important;
+  }
+
+  .compact-chain .chain-title {
+    font-size:.68em !important;
+  }
+
+  .compact-chain .note-plain,
+  .compact-chain .note-arrow,
+  .compact-chain .note-unresolved {
+    font-size:.60em !important;
+  }
+}
+
+</style>
+</head>
+<body>
+<main class="wrap" id="wrap">
+ <div class="stack left-stack" id="leftStack"></div>
+ <div class="stack right-stack" id="rightStack"></div>
+ <div class="chord-map" id="selector"></div>
+ 
+ <div class="builder-controls" onclick="event.stopPropagation()">
+   <button id="copyBtn" class="builder-btn copy-btn">Copy</button>
+   <button id="pasteBtn" class="builder-btn paste-btn">Paste</button>
+   <button id="addBtn" class="builder-btn">+</button>
+   <button id="playBtn" class="builder-btn play-btn">▶</button>
+   <select id="keySelect" class="key-select"></select>
+ </div>
+ <div id="promptRow" class="prompt-row">
+   <div id="promptLead" class="prompt-option prompt-lead"></div>
+   <div id="promptCenter" class="prompt-option prompt-center"></div>
+   <div id="promptSub" class="prompt-option prompt-sub"></div>
+ </div>
+ <div id="progressionArea" class="progression-area"></div>
+ <div id="playOverlay" class="play-overlay"></div>
+ <div class="popup" id="popup"><div class="popup-title" id="popupTitle"></div><div class="popup-notes" id="popupNotes"></div><div id="popupText"></div></div>
+ <div id="editPopup" class="edit-popup">
+   <div id="editTitle" class="edit-title"></div>
+   <div class="beat-row">
+     <button id="minusBeatBtn" class="edit-btn beat-btn">−</button>
+     <button id="plusBeatBtn" class="edit-btn beat-btn">+</button>
+   </div>
+   <button id="replaceChordBtn" class="edit-btn">Replace</button>
+   <button id="deleteChordBtn" class="edit-btn">Delete chord</button>
+   <button id="closeEditBtn" class="edit-btn">Close</button>
+ </div>
+
+ <div id="pasteOverlay" class="paste-overlay">
+   <div class="paste-box">
+     <div class="paste-title">Paste progression</div>
+     <textarea id="pasteText" class="paste-text" placeholder="Example: C / / /  [G7] / / /  C / / /"></textarea>
+     <div class="paste-actions">
+       <button id="applyPasteBtn" class="edit-btn">Use progression</button>
+       <button id="cancelPasteBtn" class="edit-btn">Cancel</button>
+     </div>
+   </div>
+ </div>
+</main>
+<script>
+const harmonyData = {"C": {"chord": "C", "rn": "I", "label": "C", "leads": [{"name": "G7", "fn": "V → I", "size": 156, "title": "G7 → C", "comment": "The primary dominant resolution. This is the most direct and familiar way to create tension that resolves home to C."}, {"name": "D7→G7", "fn": "V/V → V", "size": 124, "title": "D7 → G7 → C", "comment": "A secondary dominant chain. D7 points to G7, and G7 points to C."}, {"name": "Fm", "fn": "iv → I", "size": 106, "title": "Fm → C", "comment": "The borrowed minor iv resolving to I. A♭ often resolves down to G, giving a strong bittersweet arrival."}, {"name": "B♭", "fn": "♭VII → I", "size": 106, "title": "B♭ → C", "comment": "A backdoor-style resolution with rock, blues, gospel, folk, or modal flavor."}, {"name": "B°", "fn": "vii° → I", "size": 88, "title": "B° → C", "comment": "A leading-tone diminished approach. B naturally wants to rise to C."}, {"name": "D♭7", "fn": "♭II7 → I", "size": 74, "title": "D♭7 → C", "comment": "A tritone substitute approach. The root falls chromatically from D♭ to C while the inner voices resolve smoothly."}], "subs": [{"name": "B♭", "fn": "♭VII", "size": 156, "title": "B♭", "comment": "The flat-VII color. Probably the most common borrowed/modal color around C in rock, folk, blues, and pop."}, {"name": "Fm", "fn": "iv", "size": 124, "title": "Fm", "comment": "The borrowed minor iv. It can color C or resolve directly back to C."}, {"name": "E♭", "fn": "♭III", "size": 106, "title": "E♭", "comment": "The borrowed flat-III from C minor. Dramatic and expressive."}, {"name": "A♭", "fn": "♭VI", "size": 106, "title": "A♭", "comment": "The borrowed flat-VI from C minor. Rich, dramatic, and cinematic."}, {"name": "Cm", "fn": "i", "size": 88, "title": "Cm", "comment": "The parallel-minor tonic color. It darkens C directly by changing C major into C minor."}, {"name": "D♭", "fn": "♭II", "size": 74, "title": "D♭", "comment": "The flat-II or Neapolitan color. Striking and somewhat exotic."}, {"name": "D♭7", "fn": "♭II7", "size": 74, "title": "D♭7", "comment": "A jazzy color/tension chord around C, less common as a pure color substitution in popular music."}]}, "Dm": {"chord": "Dm", "rn": "ii", "label": "Dm", "leads": [{"name": "A7", "fn": "V/ii", "size": 156, "title": "A7 → Dm", "comment": "The most common direct secondary dominant into ii. C# is the outside note, resolving up to D."}, {"name": "Eø→A7", "fn": "iiø → V", "size": 112, "title": "Eø → A7 → Dm", "comment": "A minor-key ii–V into Dm. Very common in jazz and standards."}, {"name": "C#°", "fn": "vii°/ii", "size": 98, "title": "C#° → Dm", "comment": "A leading-tone diminished approach to Dm. C# pulls directly into D."}, {"name": "E7→A7", "fn": "V/V → V", "size": 86, "title": "E7 → A7 → Dm", "comment": "A longer dominant chain that intensifies the arrival at Dm."}, {"name": "E♭7", "fn": "♭II7/ii", "size": 74, "title": "E♭7 → Dm", "comment": "A tritone-sub or chromatic dominant approach. More jazz-oriented."}], "subs": [{"name": "C", "fn": "♭VII", "size": 142, "title": "C", "comment": "Flat-VII around Dm. Very common in modal, folk, rock, and Dorian/Aeolian contexts."}, {"name": "Gm", "fn": "iv", "size": 124, "title": "Gm", "comment": "Minor iv around Dm. A darker subdominant color borrowed from D minor."}, {"name": "B♭", "fn": "♭VI", "size": 112, "title": "B♭", "comment": "A common borrowed color around Dm, especially from D natural minor."}, {"name": "F", "fn": "rel.", "size": 104, "title": "F", "comment": "A close color substitute for Dm; Dm and F share F and A."}, {"name": "Dø", "fn": "iiø", "size": 82, "title": "Dm7♭5", "comment": "A darker minor-subdominant color, especially when borrowing from C minor or moving toward G."}, {"name": "D", "fn": "II", "size": 74, "title": "D major", "comment": "A brightened version of ii, often heard when D becomes V/V or when Dorian color gives way to dominant function."}]}, "Em": {"chord": "Em", "rn": "iii", "label": "Em", "leads": [{"name": "B7", "fn": "V/iii", "size": 156, "title": "B7 → Em", "comment": "The direct secondary dominant into iii. D# is the outside note, resolving up to E."}, {"name": "F#ø→B7", "fn": "iiø → V", "size": 112, "title": "F#ø → B7 → Em", "comment": "A minor-key ii–V into Em. Common in jazz and standards."}, {"name": "D#°", "fn": "vii°/iii", "size": 98, "title": "D#° → Em", "comment": "The leading-tone diminished approach to Em. D# pulls directly into E."}, {"name": "F#7→B7", "fn": "V/V → V", "size": 86, "title": "F#7 → B7 → Em", "comment": "A longer dominant chain that points strongly toward Em."}, {"name": "F7", "fn": "♭II7/iii", "size": 74, "title": "F7 → Em", "comment": "Chromatic/tritone-sub approach into Em. More jazz-oriented."}], "subs": [{"name": "D", "fn": "♭VII", "size": 150, "title": "D", "comment": "Flat-VII around Em. Extremely common in rock, folk, and modal minor progressions."}, {"name": "Am", "fn": "iv", "size": 128, "title": "Am", "comment": "Minor iv around Em. Very natural because it is diatonic in C and also belongs to E natural minor."}, {"name": "C", "fn": "♭VI", "size": 116, "title": "C", "comment": "A common Aeolian/modal color around Em."}, {"name": "G", "fn": "rel.", "size": 108, "title": "G", "comment": "A close relative of Em; Em and G share G and B."}, {"name": "Em7♭5", "fn": "iiiø", "size": 82, "title": "Em7♭5", "comment": "A darker version of Em, often used in jazzier or minor-borrowed settings."}, {"name": "E", "fn": "III", "size": 80, "title": "E major", "comment": "Brightens iii into a major chord. Often implies motion toward Am as V/vi, so it can stop being just a color."}]}, "F": {"chord": "F", "rn": "IV", "label": "F", "leads": [{"name": "C7", "fn": "V/IV", "size": 156, "title": "C7 → F", "comment": "The direct dominant into IV. B♭ is the outside note, giving C7 its pull toward F."}, {"name": "Gm→C7", "fn": "ii → V", "size": 116, "title": "Gm → C7 → F", "comment": "A ii–V into F. Very common in jazz and standards."}, {"name": "E°", "fn": "vii°/IV", "size": 96, "title": "E° → F", "comment": "A leading-tone diminished approach. E rises naturally into F."}, {"name": "G7→C7", "fn": "V/V → V", "size": 86, "title": "G7 → C7 → F", "comment": "A dominant chain into IV."}, {"name": "G♭7", "fn": "♭II7/IV", "size": 74, "title": "G♭7 → F", "comment": "Chromatic tritone-sub approach into F. More jazz-oriented."}], "subs": [{"name": "E♭", "fn": "♭VII", "size": 150, "title": "E♭", "comment": "Flat-VII around F, common in rock, gospel, blues, and modal progressions."}, {"name": "B♭m", "fn": "iv", "size": 132, "title": "B♭m", "comment": "Minor iv around F. Strongly emotional borrowed color."}, {"name": "D♭", "fn": "♭VI", "size": 120, "title": "D♭", "comment": "A rich borrowed color from F minor."}, {"name": "A♭", "fn": "♭III", "size": 112, "title": "A♭", "comment": "A parallel-minor color around F."}, {"name": "Dm", "fn": "rel.", "size": 112, "title": "Dm", "comment": "A close substitute for F; Dm and F share F and A."}, {"name": "F7", "fn": "IV7", "size": 98, "title": "F7", "comment": "A bluesy dominant-color version of F; also points toward B♭."}, {"name": "Fm", "fn": "iv", "size": 88, "title": "Fm", "comment": "A borrowed minor version of IV. It can color F itself or pull back toward C."}]}, "G": {"chord": "G", "rn": "V", "label": "G", "leads": [{"name": "D7", "fn": "V/V", "size": 156, "title": "D7 → G", "comment": "The direct secondary dominant into V. F# is the outside note, resolving to G."}, {"name": "Am→D7", "fn": "ii → V", "size": 120, "title": "Am → D7 → G", "comment": "A ii–V into G. Especially common in jazz, standards, and sophisticated pop."}, {"name": "F#°", "fn": "vii°/V", "size": 100, "title": "F#° → G", "comment": "Leading-tone diminished into G. F# pulls directly into G."}, {"name": "A7→D7", "fn": "V/V → V", "size": 86, "title": "A7 → D7 → G", "comment": "A longer dominant chain heading into G."}, {"name": "A♭7", "fn": "♭II7/V", "size": 74, "title": "A♭7 → G", "comment": "Chromatic tritone-sub approach into G. More jazz-oriented."}], "subs": [{"name": "F", "fn": "♭VII", "size": 150, "title": "F", "comment": "Flat-VII around G, extremely common in rock, folk, blues, and modal writing."}, {"name": "Cm", "fn": "iv", "size": 132, "title": "Cm", "comment": "Minor iv around G. A strong emotional borrowed color."}, {"name": "E♭", "fn": "♭VI", "size": 122, "title": "E♭", "comment": "Rich borrowed color from G minor."}, {"name": "B♭", "fn": "♭III", "size": 112, "title": "B♭", "comment": "Borrowed color from G minor."}, {"name": "Em", "fn": "rel.", "size": 112, "title": "Em", "comment": "A close relative of G; Em and G share G and B."}, {"name": "G7", "fn": "V7", "size": 110, "title": "G7", "comment": "The dominant seventh color on V. It usually increases the pull back to C."}, {"name": "Gm", "fn": "v", "size": 82, "title": "Gm", "comment": "A parallel-minor darkening of V. Less common as a stable substitute, but useful as color."}]}, "Am": {"chord": "Am", "rn": "vi", "label": "Am", "leads": [{"name": "E7", "fn": "V/vi", "size": 156, "title": "E7 → Am", "comment": "The direct secondary dominant into vi. G# is the outside note, resolving up to A."}, {"name": "Bm7♭5→E7", "fn": "iiø → V", "size": 120, "title": "Bm7♭5 → E7 → Am", "comment": "A minor-key ii–V into Am. Very common in jazz, standards, and minor-key pop."}, {"name": "G#°", "fn": "vii°/vi", "size": 100, "title": "G#° → Am", "comment": "Leading-tone diminished into Am. G# pulls directly into A."}, {"name": "B7→E7", "fn": "V/V → V", "size": 86, "title": "B7 → E7 → Am", "comment": "A longer dominant chain heading into Am."}, {"name": "B♭7", "fn": "♭II7/vi", "size": 74, "title": "B♭7 → Am", "comment": "Chromatic tritone-sub approach into Am. More jazz-oriented."}], "subs": [{"name": "G", "fn": "♭VII", "size": 150, "title": "G", "comment": "Flat-VII around Am. Extremely common in folk, rock, modal minor, and Aeolian writing."}, {"name": "Dm", "fn": "iv", "size": 132, "title": "Dm", "comment": "Minor iv around Am. Very common and diatonic in C."}, {"name": "F", "fn": "♭VI", "size": 122, "title": "F", "comment": "A natural Aeolian color around Am."}, {"name": "C", "fn": "rel.", "size": 116, "title": "C", "comment": "A close tonic-family color around Am; Am and C share C and E."}, {"name": "Am7♭5", "fn": "viø", "size": 82, "title": "Am7♭5", "comment": "A darker, jazzier altered version of Am."}, {"name": "A", "fn": "VI", "size": 78, "title": "A major", "comment": "Brightens vi into a major chord. Often turns into V/ii, so it may become functional rather than just color."}]}, "Bdim": {"chord": "B°", "rn": "vii°", "label": "B°", "leads": [{"name": "F#7", "fn": "V/vii°", "size": 130, "title": "F#7 → B°", "comment": "A theoretical secondary dominant into B°. Less common because B° itself is unstable."}, {"name": "C", "fn": "I → vii°", "size": 105, "title": "C → B°", "comment": "Stepwise descent from tonic into the leading-tone chord. More of a passing move than a true dominant approach."}, {"name": "Am", "fn": "vi → vii°", "size": 96, "title": "Am → B°", "comment": "Diatonic stepwise motion into B°. Often used as a passing sonority."}, {"name": "C#°", "fn": "chrom. dim", "size": 80, "title": "C#° → B°", "comment": "Chromatic diminished approach. More theoretical/jazz-color than mainstream-pop common."}], "subs": [{"name": "G7", "fn": "V7", "size": 156, "title": "G7", "comment": "The practical substitute for B° is usually G7, since B–D–F are the 3rd, 5th, and 7th of G7."}, {"name": "Bø", "fn": "viiø", "size": 116, "title": "Bm7♭5", "comment": "A jazzier, fuller version of B°. Common as a iiø chord when moving toward Am."}, {"name": "Dm", "fn": "ii", "size": 104, "title": "Dm", "comment": "Shares D and F with B°, softening the diminished tension into a minor subdominant color."}, {"name": "F", "fn": "IV", "size": 96, "title": "F", "comment": "Shares F and subdominant color. Often feels like a more stable place than B°."}, {"name": "B♭", "fn": "♭VII", "size": 82, "title": "B♭", "comment": "A chromatic/modal color near B°. Less a true substitute than a nearby color option."}]}};
+const order=["C","Dm","Em","F","G","Am","Bdim"];
+let currentKey="C", active=null;
+
+let selectedKeyRoot = "C";
+const KEY_OPTIONS = [
+  ["C","C/Am"],["D♭","D♭/B♭m"],["D","D/Bm"],["E♭","E♭/Cm"],
+  ["E","E/C#m"],["F","F/Dm"],["G♭","G♭/E♭m"],["G","G/Em"],
+  ["A♭","A♭/Fm"],["A","A/F#m"],["B♭","B♭/Gm"],["B","B/G#m"]
+];
+const TRANSPOSE_PC = {"C":0,"C#":1,"D♭":1,"Db":1,"D":2,"D#":3,"E♭":3,"Eb":3,"E":4,"F":5,"F#":6,"G♭":6,"Gb":6,"G":7,"G#":8,"A♭":8,"Ab":8,"A":9,"A#":10,"B♭":10,"Bb":10,"B":11};
+const PC_SHARP = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const PC_FLAT = ["C","D♭","D","E♭","E","F","G♭","G","A♭","A","B♭","B"];
+
+function keyOffset(){
+  return TRANSPOSE_PC[selectedKeyRoot] || 0;
+}
+function preferFlats(){
+  return ["D♭","E♭","G♭","A♭","B♭"].includes(selectedKeyRoot);
+}
+function transposeNoteName(note){
+  const n = note.replaceAll("b","♭");
+  const pc = TRANSPOSE_PC[n];
+  if(pc === undefined) return note;
+  const arr = preferFlats() ? PC_FLAT : PC_SHARP;
+  return arr[(pc + keyOffset()) % 12];
+}
+function transposeChordName(name){
+  if(!name) return name;
+  return name.replace(/[A-G](?:#|♭|b)?/g, m => transposeNoteName(m));
+}
+
+function reverseToBaseChord(name){
+  if(!name) return name;
+  const off = keyOffset();
+  if(off === 0) return name;
+  return name.replace(/[A-G](?:#|♭|b)?/g, m => {
+    const n = m.replaceAll("b","♭");
+    const pc = TRANSPOSE_PC[n];
+    if(pc === undefined) return m;
+    return PC_FLAT[(pc - off + 12) % 12];
+  });
+}
+
+function displayChordForKey(baseChord){
+  return transposeChordName(baseChord);
+}
+function displayItem(item){
+  return {
+    ...item,
+    name: transposeChordName(item.name),
+    title: transposeChordName(item.title),
+    comment: item.comment
+  };
+}
+function dataForDisplay(k){
+  const base = harmonyData[k];
+  return {
+    ...base,
+    chord: displayChordForKey(base.chord),
+    label: displayChordForKey(base.label),
+    leads: base.leads.map(displayItem),
+    subs: base.subs.map(displayItem)
+  };
+}
+
+
+const leftStack=document.getElementById("leftStack"), rightStack=document.getElementById("rightStack"), selector=document.getElementById("selector"), popup=document.getElementById("popup"), popupTitle=document.getElementById("popupTitle"), popupNotes=document.getElementById("popupNotes"), popupText=document.getElementById("popupText");
+
+
+const NOTE_PC={"C":0,"C#":1,"D♭":1,"Db":1,"D":2,"D#":3,"E♭":3,"Eb":3,"E":4,"F":5,"F#":6,"G♭":6,"Gb":6,"G":7,"G#":8,"A♭":8,"Ab":8,"A":9,"A#":10,"B♭":10,"Bb":10,"B":11,"Cb":11};
+const PC_TO_FLAT=["C","D♭","D","E♭","E","F","G♭","G","A♭","A","B♭","B"];
+function norm(n){return n.replaceAll("b","♭")} function pc(n){return NOTE_PC[norm(n)]}
+function centerNotes(k){return ({C:["C","E","G"],Dm:["D","F","A"],Em:["E","G","B"],F:["F","A","C"],G:["G","B","D"],Am:["A","C","E"],Bdim:["B","D","F"]})[k]||["C","E","G"]}
+function dist(a,b){const up=(b-a+12)%12, down=(a-b+12)%12; return Math.min(up,down)}
+function likelyResolution(note,targetNotes){let best=null, score=99; targetNotes.forEach(t=>{const s=dist(pc(note),pc(t)); if(s<score){score=s;best=t}}); return score<=2?best:null}
+function parseChordNotes(name){
+ const manual={"D7→G7":["D","F#","A","C","G","B","D","F"],"Eø→A7":["E","G","B♭","D","A","C#","E","G"],"E7→A7":["E","G#","B","D","A","C#","E","G"],"F#ø→B7":["F#","A","C","E","B","D#","F#","A"],"F#7→B7":["F#","A#","C#","E","B","D#","F#","A"],"Gm→C7":["G","B♭","D","F","C","E","G","B♭"],"G7→C7":["G","B","D","F","C","E","G","B♭"],"Am→D7":["A","C","E","G","D","F#","A","C"],"A7→D7":["A","C#","E","G","D","F#","A","C"],"Bm7♭5→E7":["B","D","F","A","E","G#","B","D"],"B7→E7":["B","D#","F#","A","E","G#","B","D"]};
+ if(manual[name]) return manual[name];
+ let m=name.match(/^[A-G](?:#|♭|b)?/); if(!m) return []; const root=norm(m[0]); const r=pc(root); const has=s=>name.includes(s); let ints;
+ if(has("°")) ints=[0,3,6]; else if(has("ø")||has("m7♭5")||has("m7b5")) ints=[0,3,6,10]; else if(has("7")&&!has("maj")) ints=[0,4,7,10]; else if(has("m")&&!has("maj")) ints=[0,3,7]; else ints=[0,4,7];
+ return ints.map(i=>PC_TO_FLAT[(r+i)%12]);
+}
+function noteList(notes,targetNotes){const targets=new Set(targetNotes.map(pc)); return notes.map(n=>{if(targets.has(pc(n))) return `<div class="note-plain">${n}</div>`; const res=likelyResolution(n,targetNotes); if(res) return `<div class="note-arrow"><span style="color:#c01818">${n}</span>→<span style="color:#111">${res}</span></div>`; return `<div class="note-unresolved">${n}</div>`}).join("")}
+function chordNotesDisplay(chord){const key=order.find(k=>dataForDisplay(k).chord===chord || harmonyData[k].chord===chord); return key?parseChordNotes(dataForDisplay(key).chord):parseChordNotes(chord)}
+function chainSteps(name){
+  const center=dataForDisplay(currentKey).chord;
+  if(name && name.includes("→")){
+    const parts=name.split("→").map(s=>s.trim()).filter(Boolean);
+    if(parts.length>=2) return [parts[0], parts[1], center];
+  }
+  return null;
+}
+function chainCol(chord,next){return `<div class="chain-col"><div class="chain-title">${chord}</div>${noteList(chordNotesDisplay(chord), next?chordNotesDisplay(next):chordNotesDisplay(chord))}</div>`}
+function notesForPopup(item){const steps=chainSteps(item.name); if(steps&&steps.length===3) return `<div class="popup-chain cols-3 compact-chain">${chainCol(steps[0],steps[1])}<div class="chain-arrow">→</div>${chainCol(steps[1],steps[2])}<div class="chain-arrow">→</div>${chainCol(steps[2],null)}</div>`; return noteList(parseChordNotes(item.name), parseChordNotes(dataForDisplay(currentKey).chord))}
+
+function renderSelector(){const cls={C:"map-I",Dm:"map-ii",Em:"map-iii",F:"map-IV",G:"map-V",Am:"map-vi",Bdim:"map-vii"}; selector.innerHTML=order.map(k=>{const d=dataForDisplay(k); return `<button class="map-cell ${cls[k]} ${k===currentKey?"active":""}" data-key="${k}"><div class="map-chord">${d.chord}</div><div class="map-rn">${d.rn}</div></button>`}).join(""); selector.querySelectorAll(".map-cell").forEach(b=>b.onclick=e=>{
+  e.stopPropagation();
+  if(handleDiatonicSelectionInBuild(b.dataset.key,b)) return;
+  render(b.dataset.key);
+})}
+function renderStack(container,items,type){const total=items.reduce((s,i)=>s+i.size,0); container.innerHTML=""; items.forEach(item=>{const div=document.createElement("button"); div.className=`rect ${type}`; div.style.flex = '0 0 52px'; div.innerHTML=`<div class="name">${item.name}</div><div class="fn">${item.fn}</div>`; div.onclick=e=>{
+    e.stopPropagation();
+
+    if(addMode && selectedDiatonic){
+      addChordFromItem(item,type);
+      return;
+    }
+
+    if(active===div){
+      div.classList.remove("active");
+      popup.classList.remove("show");
+      active=null;
+      return;
+    }
+    if(active) active.classList.remove("active");
+    active=div;
+    div.classList.add("active");
+    popupTitle.textContent=item.title;
+    popupNotes.innerHTML=notesForPopup(item);
+    popupText.textContent=item.comment;
+    positionPopup(div,type);
+  }; container.appendChild(div)})}
+
+function positionPopup(el,type){
+  popup.classList.add("show");
+  const wrap=document.getElementById("wrap");
+  const wr=wrap.getBoundingClientRect();
+  const r=el.getBoundingClientRect();
+  const selectorRect=selector.getBoundingClientRect();
+  const leftRect=leftStack.getBoundingClientRect();
+  const rightRect=rightStack.getBoundingClientRect();
+
+  const topLimit=Math.min(selectorRect.top,leftRect.top,rightRect.top)-wr.top;
+  const bottomLimit=Math.max(selectorRect.bottom,leftRect.bottom,rightRect.bottom)-wr.top;
+
+  const centerLeft=selectorRect.left-wr.left;
+  const centerRight=selectorRect.right-wr.left;
+  const centerWidth=centerRight-centerLeft;
+
+  const popupW=Math.max(150,Math.min(220,centerWidth));
+  popup.style.width=popupW+"px";
+
+  const pr=popup.getBoundingClientRect();
+  const pW=pr.width, pH=pr.height;
+
+  let left=centerLeft+(centerWidth-pW)/2;
+  let top=r.top-wr.top+r.height/2-pH/2;
+
+  top=Math.max(topLimit,Math.min(bottomLimit-pH,top));
+  left=Math.max(4,Math.min(wr.width-pW-4,left));
+  top=Math.max(4,Math.min(wr.height-pH-4,top));
+
+  popup.style.left=left+"px";
+  popup.style.top=top+"px";
+}
+
+function render(k){
+  currentKey=k;
+  if(active) active.classList.remove("active");
+  active=null;
+  popup.classList.remove("show");
+  renderSelector();
+  const d=dataForDisplay(k);
+  renderStack(leftStack,d.leads,"lead");
+  renderStack(rightStack,d.subs,"sub");
+  setBuilderStatus();
+}
+document.addEventListener("click",()=>{
+  if(active) active.classList.remove("active");
+  active=null;
+  popup.classList.remove("show");
+  if(addMode){ setBuilderStatus(); }
+})
+popup.addEventListener("click",e=>e.stopPropagation());
+
+
+const copyBtn=document.getElementById("copyBtn");
+const pasteBtn=document.getElementById("pasteBtn");
+const addBtn=document.getElementById("addBtn");
+const pasteOverlay=document.getElementById("pasteOverlay");
+const pasteText=document.getElementById("pasteText");
+const applyPasteBtn=document.getElementById("applyPasteBtn");
+const cancelPasteBtn=document.getElementById("cancelPasteBtn");
+const promptRow=document.getElementById("promptRow");
+const promptLead=document.getElementById("promptLead");
+const promptCenter=document.getElementById("promptCenter");
+const promptSub=document.getElementById("promptSub");
+const progressionArea=document.getElementById("progressionArea");
+const playBtn=document.getElementById("playBtn");
+const playOverlay=document.getElementById("playOverlay");
+const keySelect=document.getElementById("keySelect");
+KEY_OPTIONS.forEach(([root,label])=>{
+  const opt=document.createElement("option");
+  opt.value=root;
+  opt.textContent=label;
+  keySelect.appendChild(opt);
+});
+keySelect.value="C";
+keySelect.addEventListener("click",e=>e.stopPropagation());
+keySelect.addEventListener("change",e=>{
+  selectedKeyRoot=keySelect.value;
+  render(currentKey);
+  progressionArea.querySelectorAll(".prog-chord").forEach(box=>{
+    if(box.dataset.baseChord){
+      box.dataset.chord=transposeChordName(box.dataset.baseChord);
+      refreshChordNotation(box);
+    }
+  });
+});
+const editPopup=document.getElementById("editPopup");
+const editTitle=document.getElementById("editTitle");
+const minusBeatBtn=document.getElementById("minusBeatBtn");
+const plusBeatBtn=document.getElementById("plusBeatBtn");
+const replaceChordBtn=document.getElementById("replaceChordBtn");
+const deleteChordBtn=document.getElementById("deleteChordBtn");
+const closeEditBtn=document.getElementById("closeEditBtn");
+let editingChord=null;
+let replacingChord=null;
+
+let addMode=false;
+let selectedDiatonic=null;
+
+function clearBuilderHighlights(){
+  document.querySelectorAll(".build-selected").forEach(el=>el.classList.remove("build-selected"));
+  document.querySelectorAll(".build-selectable").forEach(el=>el.classList.remove("build-selectable"));
+}
+
+function hidePrompts(){
+  promptRow.classList.remove("show");
+  promptLead.textContent="";
+  promptCenter.textContent="";
+  promptSub.textContent="";
+}
+
+
+function visibleGroupBounds(groupEl, itemSelector){
+  const items = Array.from(groupEl.querySelectorAll(itemSelector));
+  const wrap = document.getElementById("wrap").getBoundingClientRect();
+
+  if(items.length === 0){
+    const r = groupEl.getBoundingClientRect();
+    return {
+      center:r.left - wrap.left + r.width/2,
+      top:r.top - wrap.top,
+      bottom:r.bottom - wrap.top
+    };
+  }
+
+  let left=Infinity, right=-Infinity, top=Infinity, bottom=-Infinity;
+  items.forEach(item=>{
+    const r = item.getBoundingClientRect();
+    left = Math.min(left, r.left - wrap.left);
+    right = Math.max(right, r.right - wrap.left);
+    top = Math.min(top, r.top - wrap.top);
+    bottom = Math.max(bottom, r.bottom - wrap.top);
+  });
+
+  return {center:(left+right)/2, top, bottom};
+}
+
+function placePromptUnder(el, bounds){
+  if(!el || !bounds) return;
+  const wrap = document.getElementById("wrap").getBoundingClientRect();
+  const promptR = el.getBoundingClientRect();
+
+  // Center by putting the prompt's anchor at the group midpoint.
+  // CSS transform: translateX(-50%) does the actual centering.
+  let center = bounds.center;
+  center = Math.max(promptR.width/2 + 2, Math.min(wrap.width - promptR.width/2 - 2, center));
+
+  const top = bounds.bottom + 3;
+
+  el.style.left = center + "px";
+  el.style.top = Math.max(2, Math.min(wrap.height - promptR.height - 2, top)) + "px";
+}
+
+function positionPrompts(){
+  // Temporarily show invisibly so dimensions can be measured.
+  const wasShown = promptRow.classList.contains("show");
+  if(!wasShown){
+    promptRow.style.display = "block";
+    promptRow.style.visibility = "hidden";
+  }
+
+  // Anchor under the actual chord boxes in each group.
+  const leadBounds = visibleGroupBounds(leftStack, ".rect");
+  const centerBounds = visibleGroupBounds(selector, ".map-cell");
+  const subBounds = visibleGroupBounds(rightStack, ".rect");
+
+  placePromptUnder(promptLead, leadBounds);
+  placePromptUnder(promptCenter, centerBounds);
+  placePromptUnder(promptSub, subBounds);
+
+  if(!wasShown){
+    promptRow.style.display = "";
+    promptRow.style.visibility = "";
+  }
+}
+
+
+function restartPromptAnimation(){
+  promptRow.classList.remove("show");
+  [promptLead,promptCenter,promptSub].forEach(p=>{
+    p.style.animation="none";
+  });
+  void promptRow.offsetWidth;
+  [promptLead,promptCenter,promptSub].forEach(p=>{
+    p.style.animation="";
+  });
+  promptRow.classList.add("show");
+  positionPrompts();
+}
+
+function setBuilderStatus(){
+  hidePrompts();
+  if(!addMode) return;
+
+  if(!selectedDiatonic){
+    promptLead.textContent="";
+    promptCenter.innerHTML="<span class=\"arrowline\">↑</span><span>Start</span>";
+    promptSub.textContent="";
+    restartPromptAnimation();
+  } else {
+    const target = dataForDisplay(selectedDiatonic).chord;
+    promptLead.innerHTML=`<span class="arrowline">↑</span><span>Leading + ${target}</span>`;
+    promptCenter.innerHTML=`<span class="arrowline">↑</span><span>${target}</span>`;
+    promptSub.innerHTML=`<span class="arrowline">↑</span><span>Substitute for ${target}</span>`;
+    restartPromptAnimation();
+  }
+}
+
+function startAddMode(){
+  addMode=true;
+  selectedDiatonic=null;
+  addBtn.classList.add("active");
+  clearBuilderHighlights();
+  document.querySelectorAll(".map-cell,.rect").forEach(el=>el.classList.add("build-selectable"));
+  setBuilderStatus();
+}
+
+function stopAddMode(){
+  addMode=false;
+  selectedDiatonic=null;
+  replacingChord=null;
+  addBtn.classList.remove("active");
+  clearBuilderHighlights();
+  setBuilderStatus();
+}
+
+
+function hideEditPopup(){
+  if(editingChord) editingChord.classList.remove("edit-selected");
+  editingChord=null;
+  editPopup.classList.remove("show");
+}
+
+function positionEditPopup(box){
+  const wr=document.getElementById("wrap").getBoundingClientRect();
+  const r=box.getBoundingClientRect();
+
+  editPopup.classList.add("show");
+  editPopup.style.left="0px";
+  editPopup.style.top="0px";
+
+  const pr=editPopup.getBoundingClientRect();
+  let left=r.left-wr.left + r.width/2 - pr.width/2;
+  let top=r.bottom-wr.top + 6;
+
+  if(top + pr.height > wr.height - 4){
+    top = r.top - wr.top - pr.height - 6;
+  }
+
+  left=Math.max(4,Math.min(wr.width-pr.width-4,left));
+  top=Math.max(4,Math.min(wr.height-pr.height-4,top));
+
+  editPopup.style.left=left+"px";
+  editPopup.style.top=top+"px";
+}
+
+function openEditPopup(box){
+  if(editingChord===box){
+    hideEditPopup();
+    return;
+  }
+
+  hideEditPopup();
+  editingChord=box;
+  box.classList.add("edit-selected");
+  editTitle.textContent=`${box.dataset.chord || "Chord"} — ${box.dataset.beats || 4} beats`;
+  positionEditPopup(box);
+}
+
+function refreshChordNotation(box){
+  const name=box.dataset.chord || "C";
+  const type=box.dataset.type || "diatonic";
+  const beats=Number(box.dataset.beats || 4);
+  const symbol = type==="diatonic" ? name : `[${name}]`;
+  let slashes="";
+  for(let i=1;i<beats;i++){
+    slashes += `<span class="prog-slash">/</span>`;
+  }
+  box.innerHTML=`<span class="prog-symbol">${symbol}</span>${slashes}`;
+}
+
+function attachProgressionEdit(box){
+  box.addEventListener("click",e=>{
+    e.stopPropagation();
+    openEditPopup(box);
+  });
+}
+
+function addProgressionBox(name,type,beats=4,beforeNode=null){
+  const box=document.createElement("div");
+  box.className=`prog-chord ${type==="lead"?"lead-prog":type==="sub"?"sub-prog":""}`;
+  box.dataset.baseChord=transposeChordName(name)===name && keyOffset()!==0 ? name : reverseToBaseChord(name);
+  box.dataset.chord=name;
+  box.dataset.type=type;
+  box.dataset.beats=String(beats);
+  refreshChordNotation(box);
+  attachProgressionEdit(box);
+  if(beforeNode) progressionArea.insertBefore(box,beforeNode);
+  else progressionArea.appendChild(box);
+  return box;
+}
+
+function chordSequenceFromItem(item,type){
+  const seq=[];
+  if(type==="lead"){
+    if(item.name.includes("→")){
+      const parts=item.name.split("→").map(s=>s.trim()).filter(Boolean);
+      parts.forEach(p=>seq.push({name:p,type:"lead",beats:2}));
+    } else {
+      seq.push({name:item.name,type:"lead",beats:4});
+    }
+    seq.push({name:dataForDisplay(selectedDiatonic).chord,type:"diatonic",beats:4});
+  } else if(type==="sub"){
+    seq.push({name:item.name,type:"sub",beats:4});
+  } else if(type==="diatonic"){
+    seq.push({name:dataForDisplay(selectedDiatonic).chord,type:"diatonic",beats:4});
+  }
+  return seq;
+}
+
+function addSequence(seq,beforeNode=null){
+  let first=null;
+  seq.forEach(entry=>{
+    const box=addProgressionBox(entry.name,entry.type,entry.beats,beforeNode);
+    if(!first) first=box;
+  });
+  return first;
+}
+
+function addChordFromItem(item,type){
+  if(!selectedDiatonic) return;
+
+  const seq=chordSequenceFromItem(item,type);
+
+  if(replacingChord){
+    const beforeNode=replacingChord;
+    const old=replacingChord;
+    addSequence(seq,beforeNode);
+    old.remove();
+  } else {
+    addSequence(seq);
+  }
+
+  // One-shot add/replace: after the chord is chosen, leave add mode automatically.
+  stopAddMode();
+}
+
+function handleDiatonicSelectionInBuild(key, cell){
+  if(!addMode) return false;
+
+  if(!selectedDiatonic){
+    selectedDiatonic=key;
+    currentKey=key;
+    if(active) active.classList.remove("active");
+    active=null;
+    popup.classList.remove("show");
+
+    renderSelector();
+    const d=dataForDisplay(key);
+    renderStack(leftStack,d.leads,"lead");
+    renderStack(rightStack,d.subs,"sub");
+
+    clearBuilderHighlights();
+    document.querySelectorAll(".rect,.map-cell").forEach(el=>el.classList.add("build-selectable"));
+    const selectedCell=document.querySelector(`.map-cell[data-key="${key}"]`);
+    if(selectedCell) selectedCell.classList.add("build-selected");
+    setBuilderStatus();
+    return true;
+  }
+
+  addChordFromItem({name:dataForDisplay(key).chord},"diatonic");
+  return true;
+}
+
+
+
+function openPasteWindow(){
+  pasteText.value = progressionText();
+  pasteOverlay.classList.add("show");
+  setTimeout(()=>pasteText.focus(), 30);
+}
+
+function closePasteWindow(){
+  pasteOverlay.classList.remove("show");
+}
+
+function guessChordTypeFromText(chord){
+  const clean = chord.replace(/^\[/,"").replace(/\]$/,"");
+  const baseClean = reverseToBaseChord ? reverseToBaseChord(clean) : clean;
+  const allDiatonic = order.map(k => dataForDisplay(k).chord);
+  if(allDiatonic.includes(clean)) return "diatonic";
+
+  // Prefer color coding based on the currently visible chord sets.
+  const visibleLead = dataForDisplay(currentKey).leads.map(i=>i.name);
+  const visibleSub = dataForDisplay(currentKey).subs.map(i=>i.name);
+  if(visibleLead.includes(clean)) return "lead";
+  if(visibleSub.includes(clean)) return "sub";
+
+  // Bracketed chords are non-diatonic; default them to substitution color.
+  if(chord.trim().startsWith("[")) return "sub";
+  return "diatonic";
+}
+
+function tokenizeProgression(text){
+  const tokens = [];
+  const re = /\[[^\]]+\]|\/|[A-G](?:#|♭|b)?(?:m7♭5|m7b5|maj7|m7|dim|°|ø|m|7)?/g;
+  let m;
+  while((m = re.exec(text)) !== null){
+    tokens.push(m[0]);
+  }
+  return tokens;
+}
+
+function assimilateProgression(text){
+  const tokens = tokenizeProgression(text);
+  if(tokens.length === 0) return;
+
+  progressionArea.innerHTML = "";
+
+  let i = 0;
+  while(i < tokens.length){
+    const tok = tokens[i];
+
+    if(tok === "/"){
+      i++;
+      continue;
+    }
+
+    let chord = tok;
+    let bracketed = false;
+    if(chord.startsWith("[") && chord.endsWith("]")){
+      bracketed = true;
+      chord = chord.slice(1,-1).trim();
+    }
+
+    let beats = 1;
+    i++;
+    while(i < tokens.length && tokens[i] === "/"){
+      beats++;
+      i++;
+    }
+
+    const type = bracketed ? guessChordTypeFromText(`[${chord}]`) : guessChordTypeFromText(chord);
+    addProgressionBox(chord, type, beats);
+  }
+}
+
+pasteBtn.addEventListener("click", e=>{
+  e.preventDefault();
+  e.stopPropagation();
+  openPasteWindow();
+});
+
+applyPasteBtn.addEventListener("click", e=>{
+  e.preventDefault();
+  e.stopPropagation();
+  assimilateProgression(pasteText.value);
+  closePasteWindow();
+});
+
+cancelPasteBtn.addEventListener("click", e=>{
+  e.preventDefault();
+  e.stopPropagation();
+  closePasteWindow();
+});
+
+pasteOverlay.addEventListener("click", e=>{
+  if(e.target === pasteOverlay) closePasteWindow();
+});
+
+pasteText.addEventListener("click", e=>e.stopPropagation());
+
+
+function progressionText(){
+  const boxes = Array.from(progressionArea.querySelectorAll(".prog-chord"));
+  return boxes.map(box => {
+    const name = box.dataset.chord || "";
+    const type = box.dataset.type || "diatonic";
+    const beats = Number(box.dataset.beats || 4);
+    const symbol = type === "diatonic" ? name : `[${name}]`;
+    const slashes = Array(Math.max(0, beats - 1)).fill("/").join(" ");
+    return slashes ? `${symbol} ${slashes}` : symbol;
+  }).join("  ");
+}
+
+copyBtn.addEventListener("click", async e=>{
+  e.preventDefault();
+  e.stopPropagation();
+  const text = progressionText();
+  if(!text) return;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    const old = copyBtn.textContent;
+    copyBtn.textContent = "Copied";
+    setTimeout(()=>copyBtn.textContent = old, 900);
+    if(playBtn) playBtn.focus({preventScroll:true});
+  } catch(err) {
+    // Fallback for older mobile browser contexts.
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand("copy"); } catch(e) {}
+    ta.remove();
+    const old = copyBtn.textContent;
+    copyBtn.textContent = "Copied";
+    setTimeout(()=>copyBtn.textContent = old, 900);
+    if(playBtn) playBtn.focus({preventScroll:true});
+  }
+});
+
+
+addBtn.addEventListener("click",e=>{
+  e.stopPropagation();
+  if(addMode) stopAddMode();
+  else startAddMode();
+});
+
+
+
+minusBeatBtn.addEventListener("click",e=>{
+  e.stopPropagation();
+  if(!editingChord) return;
+  const beats=Math.max(1,Number(editingChord.dataset.beats || 4)-1);
+  editingChord.dataset.beats=String(beats);
+  refreshChordNotation(editingChord);
+  editTitle.textContent=`${editingChord.dataset.chord || "Chord"} — ${beats} beats`;
+  positionEditPopup(editingChord);
+});
+
+plusBeatBtn.addEventListener("click",e=>{
+  e.stopPropagation();
+  if(!editingChord) return;
+  const beats=Number(editingChord.dataset.beats || 4)+1;
+  editingChord.dataset.beats=String(beats);
+  refreshChordNotation(editingChord);
+  editTitle.textContent=`${editingChord.dataset.chord || "Chord"} — ${beats} beats`;
+  positionEditPopup(editingChord);
+});
+
+replaceChordBtn.addEventListener("click",e=>{
+  e.stopPropagation();
+  if(!editingChord) return;
+  replacingChord=editingChord;
+  hideEditPopup();
+  startAddMode();
+});
+
+deleteChordBtn.addEventListener("click",e=>{
+  e.stopPropagation();
+  if(!editingChord) return;
+  const box=editingChord;
+  hideEditPopup();
+  box.remove();
+});
+
+closeEditBtn.addEventListener("click",e=>{
+  e.stopPropagation();
+  hideEditPopup();
+});
+
+editPopup.addEventListener("click",e=>e.stopPropagation());
+
+let audioCtx=null;
+let isPlaying=false;
+let playIndex=0;
+let playTimeout=null;
+let activeAudioNodes=[];
+const BPM=100;
+const BEAT_SEC=60/BPM;
+
+const NOTE_MIDI = {
+  "C":60,"C#":61,"D♭":61,"Db":61,"D":62,"D#":63,"E♭":63,"Eb":63,"E":64,"F":65,"F#":66,"G♭":66,"Gb":66,
+  "G":67,"G#":68,"A♭":68,"Ab":68,"A":69,"A#":70,"B♭":70,"Bb":70,"B":71,"Cb":71
+};
+
+function midiToFreq(m){ return 440 * Math.pow(2,(m-69)/12); }
+
+function chordPcsFromName(name){
+  const raw = (name || "").replace("♭","b");
+  const m = raw.match(/^[A-G](?:#|b)?/);
+  if(!m) return [60,64,67];
+  const rootRaw = m[0];
+  const displayRoot = rootRaw.replace("b","♭");
+  const rootMidi = NOTE_MIDI[displayRoot] ?? 60;
+  const has = s => name.includes(s);
+
+  let intervals;
+  if(has("°")) intervals=[0,3,6];
+  else if(has("ø") || has("m7♭5") || has("m7b5")) intervals=[0,3,6,10];
+  else if(has("7") && !has("maj")) intervals=[0,4,7,10];
+  else if(has("m") && !has("maj")) intervals=[0,3,7];
+  else intervals=[0,4,7];
+
+  return intervals.map(i=>rootMidi+i);
+}
+
+function playTone(freq, start, dur, gain=0.08, type="triangle"){
+  if(!Number.isFinite(freq)) return;
+  const osc=audioCtx.createOscillator();
+  const g=audioCtx.createGain();
+  osc.type=type;
+  osc.frequency.setValueAtTime(freq,start);
+  g.gain.setValueAtTime(0,start);
+  g.gain.linearRampToValueAtTime(gain,start+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001,start+dur);
+  osc.connect(g).connect(audioCtx.destination);
+  activeAudioNodes.push(osc, g);
+  osc.onended = () => {
+    activeAudioNodes = activeAudioNodes.filter(n => n !== osc && n !== g);
+  };
+  osc.start(start);
+  osc.stop(start+dur+0.03);
+}
+
+function playChordHit(midis, start, dur){
+  midis.forEach((m,i)=>{
+    playTone(midiToFreq(m), start, dur, 0.05, i===0 ? "triangle" : "sine");
+  });
+}
+
+function playBassHit(midis, start, dur){
+  playTone(midiToFreq(midis[0]-24), start, dur, 0.095, "sine");
+}
+
+function playChordBox(box){
+  if(!audioCtx) audioCtx=new (window.AudioContext || window.webkitAudioContext)();
+
+  const name=box.dataset.chord || "C";
+  const beats=Number(box.dataset.beats || 4);
+  const dur=beats*BEAT_SEC;
+  const now=audioCtx.currentTime+0.02;
+  const midis=chordPcsFromName(name);
+
+  // Four-beat pattern at 100 bpm:
+  // beat 1 = bass only
+  // beat 2 = chord only
+  // beat 3 = bass + chord
+  // beat 4 = chord only
+  for(let beat=0; beat<beats; beat++){
+    const t = now + beat * BEAT_SEC;
+    const hitDur = BEAT_SEC * 0.82;
+
+    if(beat % 4 === 0){
+      playBassHit(midis, t, hitDur);
+    } else if(beat % 4 === 1){
+      playChordHit(midis, t, hitDur);
+    } else if(beat % 4 === 2){
+      playBassHit(midis, t, hitDur);
+      playChordHit(midis, t, hitDur);
+    } else {
+      playChordHit(midis, t, hitDur);
+    }
+  }
+
+  return dur;
+}
+
+function clearPlayingHighlight(){
+  document.querySelectorAll(".playing-chord").forEach(el=>el.classList.remove("playing-chord"));
+}
+
+function stopPlayback(){
+  isPlaying=false;
+  playBtn.classList.remove("active");
+  playBtn.textContent="▶";
+  clearPlayingHighlight();
+  if(playTimeout) clearTimeout(playTimeout);
+  playTimeout=null;
+  if(playOverlay) playOverlay.classList.remove("show");
+
+  // Immediately silence all currently sounding or scheduled oscillators.
+  activeAudioNodes.forEach(node=>{
+    try {
+      if(node.stop) node.stop(0);
+      if(node.disconnect) node.disconnect();
+    } catch(e) {}
+  });
+  activeAudioNodes=[];
+
+  // Closing the context is the most reliable way to cancel scheduled notes on iOS.
+  if(audioCtx && audioCtx.state !== "closed"){
+    try { audioCtx.close(); } catch(e) {}
+  }
+  audioCtx=null;
+}
+
+function playNextChord(){
+  if(!isPlaying) return;
+  const boxes=Array.from(progressionArea.querySelectorAll(".prog-chord"));
+  if(boxes.length===0){ stopPlayback(); return; }
+
+  clearPlayingHighlight();
+  if(playIndex>=boxes.length) playIndex=0;
+  const box=boxes[playIndex];
+  box.classList.add("playing-chord");
+
+  const dur=playChordBox(box);
+  playIndex++;
+
+  playTimeout=setTimeout(playNextChord, dur*1000);
+}
+
+function getAudioContext(){
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if(!audioCtx || audioCtx.state === "closed"){
+    audioCtx = new AudioContextClass();
+  }
+  return audioCtx;
+}
+
+function startPlayback(){
+  const boxes = Array.from(progressionArea.querySelectorAll(".prog-chord"));
+  if(boxes.length === 0) return;
+
+  const ctx = getAudioContext();
+
+  const actuallyStart = () => {
+    if(isPlaying) return;
+    isPlaying = true;
+    playIndex = 0;
+    playBtn.classList.add("active");
+    playBtn.textContent = "■";
+    if(playOverlay) playOverlay.classList.add("show");
+    playNextChord();
+  };
+
+  if(ctx.state === "suspended"){
+    ctx.resume().then(actuallyStart).catch(()=>{
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtx.resume().then(actuallyStart).catch(()=>{});
+    });
+  } else {
+    actuallyStart();
+  }
+}
+
+let lastPlayButtonTime = 0;
+
+function handlePlayButton(e){
+  if(e){
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  const now = Date.now();
+  if(now - lastPlayButtonTime < 250) return;
+  lastPlayButtonTime = now;
+
+  if(isPlaying){
+    stopPlayback();
+    return;
+  }
+
+  startPlayback();
+}
+
+playBtn.addEventListener("click", handlePlayButton);
+playBtn.style.touchAction = "manipulation";
+if(playOverlay){ playOverlay.addEventListener("click", e=>e.stopPropagation()); playOverlay.addEventListener("touchend", e=>e.stopPropagation(), {passive:false}); }
+
+
+window.addEventListener("resize",positionPrompts);
+render("C");
+</script>
+</body>
+</html>
